@@ -5,10 +5,8 @@ use std::env;
 fn main() {
     println!("🛡️ Starting Aegis sentinel...");
 
-    // 1. Load environment variables
     dotenv().ok();
 
-    // Retrieve and clean credentials
     let domain = env::var("IMAP_DOMAIN")
         .expect("Error: IMAP_DOMAIN missing in .env")
         .trim()
@@ -24,17 +22,14 @@ fn main() {
         .trim()
         .to_string();
 
-    // 2. Configure the secure connector (TLS)
     let tls = TlsConnector::builder()
         .build()
         .expect("Failed to create TLS connector");
 
-    // 3. Establish connection to the IMAP server
     println!("🔄 Connecting to server {}...", domain);
     let client = imap::connect((domain.as_str(), 993), domain.as_str(), &tls)
         .expect("Failed to connect to the IMAP server");
 
-    // 4. Authenticate with email and password
     let mut imap_session = client
         .login(&email, &password)
         .map_err(|e| e.0)
@@ -42,13 +37,18 @@ fn main() {
 
     println!("✅ Authentication successful!");
 
-    // 5. Select the INBOX
     imap_session
         .select("INBOX")
         .expect("Failed to select INBOX");
     println!("📥 INBOX selected and ready.");
 
-    // 6. Clean logout
-    imap_session.logout().expect("Error during logout");
-    println!("🛑 Logout successful. End of test.");
+    println!("👀 Entering Sentinel mode. Press Ctrl+C to stop.");
+
+    loop {
+        println!("⏳ Waiting for new emails (IMAP IDLE)...");
+        let mut idle_session = imap_session.idle().expect("Failed to initialize IDLE mode");
+        idle_session.wait_keepalive().expect("Failed to wait for new emails");
+        imap_session = idle_session.done().expect("Failed to resume normal session");
+        println!("🔔 Wake up! Activity detected in the INBOX.");
+    }
 }
