@@ -53,5 +53,27 @@ fn main() {
             .expect("Error while waiting for server events");
 
         println!("🔔 Wake up! Activity detected in the INBOX.");
+        println!("🔍 Searching for unread messages...");
+        let unread_messages = imap_session.search("UNSEEN").expect("Failed to search for unread messages");
+        if unread_messages.is_empty() {
+            println!("❌ No unread messages found.");
+        } else {
+            println!("✅ Found {} unread messages.", unread_messages.len());
+            for msg_id in unread_messages {
+                let fetch_result = imap_session.fetch(msg_id.to_string(), "(ENVELOPE)").expect("Failed to fetch message");
+                for msg in fetch_result {
+                    if let Some(envelope) = msg.envelope() {
+                        let subject = envelope.subject().as_ref().and_then(|f| f.first()).map(|addr| {
+                            let mailbox = addr.mailbox.as_ref().map(|m| String::from_utf8_lossy(m)).unwrap_or_default();
+                            let host = addr.host.as_ref().map(|h| String::from_utf8_lossy(h)).unwrap_or_default();
+                            format!("{}@{}", mailbox, host)
+                        }).unwrap_or_else(|| "Unknown Sender".to_string());
+                        println!("🚨 [NEW THREAT SCAN] From: {} | Subject: {}", from, subject);
+                    }
+                }
+            }
+        }
+        println!("🛡️ Aegis is going back to sleep...");
+        println!("--------------------------------------------------");
     }
 }
