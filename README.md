@@ -28,5 +28,15 @@ Aegis is a lightweight, real-time email security shield written in Rust. It runs
 * A test email account with an "App Password" generated.
 * A free VirusTotal API key.
 
+### Configuration
+
+Create a `.env` file in the root directory and configure it with your credentials (see `.env-template`):
+
+```env
+IMAP_DOMAIN=[your imap domain]
+IMAP_EMAIL=[your email address]
+IMAP_PASSWORD=[follow the instructions]
+```
+
 ---
 *Developed as a personal cybersecurity project.*
