@@ -4,7 +4,6 @@ use std::env;
 
 fn main() {
     println!("🛡️ Starting Aegis sentinel...");
-
     dotenv().ok();
 
     let domain = env::var("IMAP_DOMAIN")
@@ -46,9 +45,13 @@ fn main() {
 
     loop {
         println!("⏳ Waiting for new emails (IMAP IDLE)...");
-        let mut idle_session = imap_session.idle().expect("Failed to initialize IDLE mode");
-        idle_session.wait_keepalive().expect("Failed to wait for new emails");
-        imap_session = idle_session.done().expect("Failed to resume normal session");
+
+        let idle_session = imap_session.idle().expect("Failed to initialize IDLE mode");
+
+        idle_session
+            .wait_keepalive()
+            .expect("Error while waiting for server events");
+
         println!("🔔 Wake up! Activity detected in the INBOX.");
     }
 }
