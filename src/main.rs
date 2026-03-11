@@ -36,10 +36,12 @@ fn main() {
 
     println!("✅ Authentication successful!");
 
-    imap_session
+    let mailbox = imap_session
         .select("INBOX")
         .expect("Failed to select INBOX");
     println!("📥 INBOX selected and ready.");
+
+    let mut next_uid = mailbox.uid_next.unwrap_or(1);
 
     println!("👀 Entering Sentinel mode. Press Ctrl+C to stop.");
 
@@ -53,21 +55,53 @@ fn main() {
             .expect("Error while waiting for server events");
 
         println!("🔔 Wake up! Activity detected in the INBOX.");
-        println!("🔍 Searching for unread messages...");
-        let unread_messages = imap_session.search("UNSEEN").expect("Failed to search for unread messages");
-        if unread_messages.is_empty() {
-            println!("❌ No unread messages found.");
+        println!("🔍 Searching for newly received messages...");
+        let search_query = format!("UID {}:*", next_uid);
+        let new_messages = imap_session
+            .uid_search(&search_query)
+            .expect("Failed to search for new messages");
+
+        let new_messages: Vec<u32> = new_messages
+            .into_iter()
+            .filter(|&uid| uid >= next_uid)
+            .collect();
+
+        if new_messages.is_empty() {
+            println!("❌ No new messages found.");
         } else {
-            println!("✅ Found {} unread messages.", unread_messages.len());
-            for msg_id in unread_messages {
-                let fetch_result = imap_session.fetch(msg_id.to_string(), "(ENVELOPE)").expect("Failed to fetch message");
-                for msg in fetch_result {
+            println!("✅ Found {} new messages.", new_messages.len());
+            for msg_uid in new_messages {
+                if msg_uid >= next_uid {
+                    next_uid = msg_uid + 1;
+                }
+                let fetch_result = imap_session
+                    .uid_fetch(msg_uid.to_string(), "(ENVELOPE)")
+                    .expect("Failed to fetch message");
+                for msg in &fetch_result {
                     if let Some(envelope) = msg.envelope() {
-                        let subject = envelope.subject().as_ref().and_then(|f| f.first()).map(|addr| {
-                            let mailbox = addr.mailbox.as_ref().map(|m| String::from_utf8_lossy(m)).unwrap_or_default();
-                            let host = addr.host.as_ref().map(|h| String::from_utf8_lossy(h)).unwrap_or_default();
-                            format!("{}@{}", mailbox, host)
-                        }).unwrap_or_else(|| "Unknown Sender".to_string());
+                        let from = envelope
+                            .from
+                            .as_ref()
+                            .and_then(|f| f.first())
+                            .map(|addr| {
+                                let mailbox = addr
+                                    .mailbox
+                                    .as_ref()
+                                    .map(|m| String::from_utf8_lossy(m))
+                                    .unwrap_or_default();
+                                let host = addr
+                                    .host
+                                    .as_ref()
+                                    .map(|h| String::from_utf8_lossy(h))
+                                    .unwrap_or_default();
+                                format!("{}@{}", mailbox, host)
+                            })
+                            .unwrap_or_else(|| "Unknown Sender".to_string());
+                        let subject = envelope
+                            .subject
+                            .as_ref()
+                            .map(|s| String::from_utf8_lossy(s).into_owned())
+                            .unwrap_or_else(|| "No Subject".to_string());
                         println!("🚨 [NEW THREAT SCAN] From: {} | Subject: {}", from, subject);
                     }
                 }
