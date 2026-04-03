@@ -1,6 +1,7 @@
 use dotenv::dotenv;
 use native_tls::TlsConnector;
 use std::env;
+mod parser;
 
 fn main() {
     println!("🛡️ Starting Aegis sentinel...");
@@ -36,12 +37,10 @@ fn main() {
 
     println!("✅ Authentication successful!");
 
-    let mailbox = imap_session
+    imap_session
         .select("INBOX")
         .expect("Failed to select INBOX");
     println!("📥 INBOX selected and ready.");
-
-    let mut next_uid = mailbox.uid_next.unwrap_or(1);
 
     println!("👀 Entering Sentinel mode. Press Ctrl+C to stop.");
 
@@ -55,27 +54,18 @@ fn main() {
             .expect("Error while waiting for server events");
 
         println!("🔔 Wake up! Activity detected in the INBOX.");
-        println!("🔍 Searching for newly received messages...");
-        let search_query = format!("UID {}:*", next_uid);
-        let new_messages = imap_session
-            .uid_search(&search_query)
-            .expect("Failed to search for new messages");
+        println!("🔍 Searching for unread messages...");
+        let unread_messages = imap_session
+            .search("UNSEEN")
+            .expect("Failed to search for unread messages");
 
-        let new_messages: Vec<u32> = new_messages
-            .into_iter()
-            .filter(|&uid| uid >= next_uid)
-            .collect();
-
-        if new_messages.is_empty() {
-            println!("❌ No new messages found.");
+        if unread_messages.is_empty() {
+            println!("❌ No unread messages found.");
         } else {
-            println!("✅ Found {} new messages.", new_messages.len());
-            for msg_uid in new_messages {
-                if msg_uid >= next_uid {
-                    next_uid = msg_uid + 1;
-                }
+            println!("✅ Found {} unread messages.", unread_messages.len());
+            for msg_id in &unread_messages {
                 let fetch_result = imap_session
-                    .uid_fetch(msg_uid.to_string(), "(ENVELOPE)")
+                    .fetch(msg_id.to_string(), "(ENVELOPE BODY[])")
                     .expect("Failed to fetch message");
                 for msg in &fetch_result {
                     if let Some(envelope) = msg.envelope() {
@@ -103,6 +93,15 @@ fn main() {
                             .map(|s| String::from_utf8_lossy(s).into_owned())
                             .unwrap_or_else(|| "No Subject".to_string());
                         println!("🚨 [NEW THREAT SCAN] From: {} | Subject: {}", from, subject);
+                        if let Some(body) = msg.body() {
+                            let parsed = parser::parse_email(body);
+                            for url in &parsed.urls {
+                                println!("🔗 URL found: {}", url);
+                            }
+                            for att in &parsed.attachments {
+                                println!("📎 Attachment: {}", att.filename);
+                            }
+                        }
                     }
                 }
             }
